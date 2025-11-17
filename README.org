@@ -1,5 +1,5 @@
 :PROPERTIES:
-:LAST_MODIFIED: [2025-11-17 Mon 05:26]
+:LAST_MODIFIED: [2025-11-17 Mon 05:29]
 :END:
 #+title: read-multi
 
@@ -28,16 +28,17 @@ Call =read-multi= with a list of plists. Plists should be shaped as:
 
 #+begin_src emacs-lisp
 (read-multi
- '((:prompt "Age: "
-    :read-fn (lambda (prompt _)
-               (let ((response (read-string prompt)))
-                 (while (not (string-match-p "[0-9]+" response))
-                   (setq response (read-string prompt)))
-                 (string-to-number response)))
-    :stringify-fn (lambda (value) (number-to-string value))
-    )
-   (:prompt "Full name: "
-    :read-fn (lambda (prompt _) (read-string prompt)))))
+ '((:prompt
+    "Age: "
+    :read-fn
+    (lambda (prompt value)
+      (let ((response (read-string prompt value)))
+        (while (not (string-match-p "[0-9]+" response))
+          (setq response (read-string prompt)))
+        (string-to-number response)))
+    :default 55
+    :stringify-fn (lambda (value) (number-to-string value)))
+   (:prompt "Full name: " :read-fn (lambda (prompt _) (read-string prompt)))))
 #+end_src
 
 *** Org-mode TODO metadata
@@ -48,86 +49,88 @@ I use this utility to prompt myself to fill in TODO metadata on capture (priorit
 (defun cashpw/org--populate-missing-todo-props ()
   "Prompot user for missing todo properties and apply them.."
   (cl-destructuring-bind
-      (priority effort category scheduled deadline)
-      (let ((categories
-             (mapcar #'list (org-property-values "CATEGORY"))))
-        (read-multi
-         `((:prompt
-            "Priority"
-            :default
-            ,(if (org-extras-get-priority (point))
-                 (org-priority-to-value (org-extras-get-priority (point)))
-               nil)
-            :read-fn
-            (lambda (_ default)
-              (string-to-number
-               (read-string (format "Priority %s-%s: "
-                                    (number-to-string org-priority-highest)
-                                    (number-to-string org-priority-lowest))
-                            (when default
-                              (number-to-string default)))))
-            :stringify-fn (lambda (value) (number-to-string value)))
-           (:prompt
-            "Effort"
-            :default ,(org-extras-get-property (point) "Effort")
-            :read-fn (lambda (_ default) (read-string "Effort: " default)))
-           (:prompt
-            "Category"
-            :default
-            ,(let ((category (org-get-category)))
-               (cond
-                ((string-equal "???" category)
-                 nil)
-                ((string-equal (file-name-base) category)
-                 nil)
-                (t
-                 category)))
-            :read-fn
-            (lambda (_ default)
-              (completing-read "Category: " categories nil 'require-match default)))
-           (:prompt
-            "Schedule"
-            :default ,(org-get-scheduled-time (point))
-            :read-fn
-            (lambda (_ default)
-              (with-temp-buffer
-                (org-mode)
-                (org-insert-heading)
-                (condition-case nil
-                    (shut-up
-                      (when default
-                        (org-schedule nil default))
-                      (org-schedule nil))
-                  (quit
-                   nil))
-                (org-get-scheduled-time (point))))
-            :stringify-fn (lambda (value) (format-time-string "%F %T%Z" value)))
-           (:prompt
-            "Deadline"
-            :default ,(org-get-deadline-time (point))
-            :read-fn
-            (lambda (_ default)
-              (with-temp-buffer
-                (org-mode)
-                (org-insert-heading)
-                (condition-case nil
-                    (shut-up
-                      (when default
-                        (org-deadline nil default))
-                      (org-deadline nil))
-                  (quit
-                   nil))
-                (org-get-deadline-time (point))))
-            :stringify-fn (lambda (response) (format-time-string "%F %T%Z" response))))))
-    (org-priority priority)
-    (org-set-effort nil effort)
-    (org-set-property "CATEGORY" category)
-    (if scheduled
-        (org-schedule nil scheduled)
-      (org-schedule '(4)))
-    (if deadline
-        (org-deadline nil deadline)
-      (org-deadline '(4)))))
+   (priority effort category scheduled deadline)
+   (let ((categories (mapcar #'list (org-property-values "CATEGORY"))))
+     (read-multi
+      `((:prompt
+         "Priority"
+         :default
+         ,(if (org-extras-get-priority (point))
+              (org-priority-to-value (org-extras-get-priority (point)))
+            nil)
+         :read-fn
+         (lambda (_ default)
+           (string-to-number
+            (read-string (format "Priority %s-%s: "
+                                 (number-to-string org-priority-highest)
+                                 (number-to-string org-priority-lowest))
+                         (when default
+                           (number-to-string default)))))
+         :stringify-fn (lambda (value) (number-to-string value)))
+        (:prompt
+         "Effort"
+         :default ,(org-extras-get-property (point) "Effort")
+         :read-fn (lambda (_ default) (read-string "Effort: " default)))
+        (:prompt
+         "Category"
+         :default
+         ,(let ((category (org-get-category)))
+            (cond
+             ((string-equal "???" category)
+              nil)
+             ((string-equal (file-name-base) category)
+              nil)
+             (t
+              category)))
+         :read-fn
+         (lambda (_ default)
+           (completing-read "Category: " categories
+                            nil
+                            'require-match
+                            default)))
+        (:prompt
+         "Schedule"
+         :default ,(org-get-scheduled-time (point))
+         :read-fn
+         (lambda (_ default)
+           (with-temp-buffer
+             (org-mode)
+             (org-insert-heading)
+             (condition-case nil
+                 (shut-up
+                  (when default
+                    (org-schedule nil default))
+                  (org-schedule nil))
+               (quit
+                nil))
+             (org-get-scheduled-time (point))))
+         :stringify-fn (lambda (value) (format-time-string "%F %T%Z" value)))
+        (:prompt
+         "Deadline"
+         :default ,(org-get-deadline-time (point))
+         :read-fn
+         (lambda (_ default)
+           (with-temp-buffer
+             (org-mode)
+             (org-insert-heading)
+             (condition-case nil
+                 (shut-up
+                  (when default
+                    (org-deadline nil default))
+                  (org-deadline nil))
+               (quit
+                nil))
+             (org-get-deadline-time (point))))
+         :stringify-fn (lambda (response) (format-time-string "%F %T%Z" response))))))
+   (org-priority priority)
+   (org-set-effort nil effort)
+   (org-set-property "CATEGORY" category)
+   (if scheduled
+       (org-schedule nil scheduled)
+     (org-schedule '(4)))
+   (if deadline
+       (org-deadline nil deadline)
+     (org-deadline '(4)))))
 #+end_src
 
 * Install
